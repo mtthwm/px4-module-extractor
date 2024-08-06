@@ -24,10 +24,18 @@ def find_scripts (dirname: str, identifier: str = "#!/bin/sh"):
     return script_names
 
 class ParserState:
-    if_was_true = False
-    in_if_body = False
+    skip = False
+    indentation_level = 0
+    last_executed_indentation_level = 0
 
-def parse_script (filepath: str, statement_handlers: Dict[str, Callable[[re.Match[str], ParserState], None]]):
+class StatementHandler:
+    def execute (self, match: re.Match, state: ParserState) -> None:
+        pass
+    
+    def unconditional (self, match: re.Match, state: ParserState) -> None:
+        pass
+
+def parse_script (filepath: str, statement_handlers: Dict[str, StatementHandler]):
     state = ParserState()
     with open(filepath, "r") as file:
         for raw_line in file:
@@ -43,8 +51,10 @@ def parse_script (filepath: str, statement_handlers: Dict[str, Callable[[re.Matc
                 reg_compiled = re.compile(pattern)
                 reg_match = re.search(reg_compiled, line)
                 if reg_match:
-                    statement_handlers[pattern](reg_match, state)
-                    continue
+                    statement_handlers[pattern].unconditional(reg_match, state)
+                    if not state.skip:
+                        statement_handlers[pattern].execute(reg_match, state)
+                    break
 
 def infer_type (str_val: str) -> float | str:
     try:
@@ -64,7 +74,7 @@ def main ():
 
     # Useful Globals
     build_dir = os.path.join(px4_dir, "build")
-    init_scripts_dir = os.path.join(f"ROMFS/px4fmu_common/init.d{".posix"}")
+    init_scripts_dir = os.path.join(px4_dir, f"ROMFS/px4fmu_common/init.d{".posix" if is_posix else ""}")
     boards_dir = os.path.join(px4_dir, "boards")
     params_set = {}
 
@@ -72,29 +82,49 @@ def main ():
     set_params = {}
     started_mods = set()
 
-    def handle_set_param (match: re.Match[str], state: ParserState):
-        param_name = match.group("param_name")
-        param_val = match.group("param_val")
-        set_params[param_name] = infer_type(param_val)
-
-    def handle_set_default_param (match: re.Match[str], state: ParserState):
-        param_name = match.group("param_name")
-        param_val = match.group("param_val")
-        if not params_set.get(param_name, False):
+    class handle_set_param (StatementHandler):
+        def execute (self, match: re.Match[str], state: ParserState):
+            param_name = match.group("param_name")
+            param_val = match.group("param_val")
             set_params[param_name] = infer_type(param_val)
 
-    def handle_start_module (match: re.Match[str], state: ParserState):
-        module_name = match.group("module_name")
-        started_mods.add(module_name)
+    class handle_set_default_param (StatementHandler):
+        def execute (self, match: re.Match[str], state: ParserState):
+            param_name = match.group("param_name")
+            param_val = match.group("param_val")
+            if not params_set.get(param_name, False):
+                set_params[param_name] = infer_type(param_val)
 
-    def handle_if (match: re.Match[str], state: ParserState):
-        pass
+    class handle_start_module (StatementHandler):
+        def execute (self, match: re.Match[str], state: ParserState):
+            module_name = match.group("module_name")
+            started_mods.add(module_name)
+
+    class handle_if (StatementHandler):
+        def unconditional(self, match: re.Match, state: ParserState) -> None:
+            state.indentation_level += 1
+
+        def execute (self, match: re.Match[str], state: ParserState):
+            result = False # TODO: Try to infer this value
+
+            if not result:
+                state.skip = True
+                state.last_executed_indentation_level = state.indentation_level - 1
+
+    class handle_fi (StatementHandler):
+        def unconditional(self, match: re.Match, state: ParserState) -> None:
+            state.indentation_level -= 1
+
+            if state.skip and (state.indentation_level == state.last_executed_indentation_level):
+                state.skip = False
+
 
     handlers = {
-        r"^param set (?P<param_name>\w+)\s(?P<param_val>\w+).*$": handle_set_param,
-        r"^param set-default (?P<param_name>\w+)\s(?P<param_val>\w+).*$": handle_set_default_param,
-        r"^(?P<module_name>\w+)\sstart.*$": handle_start_module,
-        r"^if (?P<condition>.+)$": handle_if,
+        r"^param set (?P<param_name>\w+)\s(?P<param_val>\w+).*$": handle_set_param(),
+        r"^param set-default (?P<param_name>\w+)\s(?P<param_val>\w+).*$": handle_set_default_param(),
+        r"^(?P<module_name>\w+)\sstart.*$": handle_start_module(),
+        r"^if (?P<condition>.+)$": handle_if(),
+        r"^fi$": handle_fi(),
     }
 
     # Step 1: Find the initialization scripts for the board we are using and add their parameters/started modules
@@ -104,7 +134,13 @@ def main ():
     for script in init_scripts:
         parse_script(script, handlers)
 
-    # Step 2: Find 
+    # Step 2: rcS script 
+    rcSFile = os.path.join(init_scripts_dir, "rcS")
+    parse_script(rcSFile, handlers)
+
+    print(started_mods)
+    print()
+    print(set_params)
 
 
     # mod_start_reg = re.compile(r"^(?P<module>\w+) start$")
