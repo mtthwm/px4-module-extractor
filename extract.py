@@ -149,6 +149,12 @@ def main ():
             if state.skip and (state.indentation_level == state.last_executed_indentation_level):
                 state.skip = False
 
+    class handle_script_execution (StatementHandler):
+        def execute(self, match: re.Match, state: ParserState) -> None:
+            filepath = os.path.join(init_scripts_dir, match.group("filename"))
+            if os.path.exists(filepath):
+                parse_script(filepath, handlers)
+
 
     handlers = {
         r"^param set (?P<param_name>\w+)\s(?P<param_val>\w+).*$": handle_set_param(),
@@ -157,6 +163,7 @@ def main ():
         r"^if (?P<condition>.+)$": handle_if(),
         r"^fi$": handle_fi(),
         r"^else$": handle_else(),
+        r"^\.\s(.+\/)+(?P<filename>.+)$": handle_script_execution(),
     }
 
     # Step 1: Find the initialization scripts for the board we are using and add their parameters/started modules
