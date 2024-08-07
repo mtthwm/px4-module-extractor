@@ -77,7 +77,6 @@ def main ():
     build_dir = os.path.join(px4_dir, "build")
     init_scripts_dir = os.path.join(px4_dir, f"ROMFS/px4fmu_common/init.d{".posix" if is_posix else ""}")
     boards_dir = os.path.join(px4_dir, "boards")
-    params_set = {}
 
     # Parser vars/functions
     set_params = {}
@@ -93,7 +92,7 @@ def main ():
         def execute (self, match: re.Match[str], state: ParserState):
             param_name = match.group("param_name")
             param_val = match.group("param_val")
-            if not params_set.get(param_name, False):
+            if not set_params.get(param_name, False):
                 set_params[param_name] = infer_type(param_val)
 
     class handle_start_module (StatementHandler):
@@ -105,8 +104,35 @@ def main ():
         def unconditional(self, match: re.Match, state: ParserState) -> None:
             state.indentation_level += 1
 
+        def _comparison (self, match: re.Match[str]) -> bool:
+            op = match.group("operator")
+            param_name = match.group("param_name")
+            param_val = infer_type(match.group("param_val"))
+
+            if not set_params.get(param_name, False):
+                return False
+
+            if op == "greater":
+                return set_params[param_name] > param_val
+            elif op == "compare":
+                return set_params[param_name] == param_val
+            
+            return False
+
+        def _resolve_condition (self, condition: str) -> bool:
+            condition_handlers = {
+                r"^param (?P<operator>(greater)|(compare))\s(.+\s)*(?P<param_name>\w+)\s(?P<param_val>\w+)$": self._comparison,
+            }
+
+            for pattern in condition_handlers:
+                m = re.search(re.compile(pattern), condition)
+                if m:
+                    return condition_handlers[pattern](m)
+                
+            return False
+
         def execute (self, match: re.Match[str], state: ParserState):
-            result = False # TODO: Try to infer this value
+            result = self._resolve_condition(match.group("condition")) # TODO: Try to infer this value
 
             if not result:
                 state.skip = True
