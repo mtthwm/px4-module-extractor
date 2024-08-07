@@ -70,7 +70,8 @@ def main ():
     is_posix = False
     board_vendor = "raspberrypi"
     board_model = "pico"
-    airframe = ""
+    airframe = "4901_crazyflie21"
+    vehicle="mc" #balloon, fw, uuv, mc, etc.
 
     # Useful Globals
     build_dir = os.path.join(px4_dir, "build")
@@ -128,26 +129,26 @@ def main ():
     }
 
     # Step 1: Find the initialization scripts for the board we are using and add their parameters/started modules
-    init_dir = os.path.join(boards_dir, board_vendor, board_model, "init")
-    init_scripts = find_scripts(init_dir)
+    board_dir = os.path.join(boards_dir, board_vendor, board_model, "init")
+    board_init_scripts = find_scripts(board_dir)
 
-    for script in init_scripts:
+    for script in board_init_scripts:
         parse_script(script, handlers)
 
     # Step 2: rcS script 
     rcSFile = os.path.join(init_scripts_dir, "rcS")
     parse_script(rcSFile, handlers)
 
-    print(started_mods)
+    # Step 3: Vehicle type-specific initialization files
+    vehicle_scripts = find_scripts(init_scripts_dir)
+    
+    for script in vehicle_scripts:
+        if re.match(rf"rc.({vehicle})\w+", os.path.basename(script)):
+            parse_script(script, handlers)
+
+    print(",".join(started_mods))
     print()
     print(set_params)
-
-
-    # mod_start_reg = re.compile(r"^(?P<module>\w+) start$")
-    # mod_start_match = re.search(mod_start_reg, "px4_mod start")
-
-    # if mod_start_match:
-    #     print(mod_start_match.group("module"))
 
 
 if __name__ == "__main__":
