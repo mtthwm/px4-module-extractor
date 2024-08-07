@@ -138,6 +138,10 @@ def main ():
                 state.skip = True
                 state.last_executed_indentation_level = state.indentation_level - 1
 
+    class handle_else (StatementHandler):
+        def unconditional(self, match: re.Match, state: ParserState) -> None:
+            state.skip = not state.skip
+
     class handle_fi (StatementHandler):
         def unconditional(self, match: re.Match, state: ParserState) -> None:
             state.indentation_level -= 1
@@ -152,6 +156,7 @@ def main ():
         r"^(?P<module_name>\w+)\sstart.*$": handle_start_module(),
         r"^if (?P<condition>.+)$": handle_if(),
         r"^fi$": handle_fi(),
+        r"^else$": handle_else(),
     }
 
     # Step 1: Find the initialization scripts for the board we are using and add their parameters/started modules
