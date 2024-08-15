@@ -68,10 +68,10 @@ def main ():
     # Configurable Parameters
     px4_dir = "/home/matt/Src/PX4-Autopilot/"
     is_posix = False
-    board_vendor = "raspberrypi"
-    board_model = "pico"
+    board_vendor = "cubepilot"
+    board_model = "cubeorangeplus"
     airframe = "4901_crazyflie21"
-    vehicle="mc" #balloon, fw, uuv, mc, etc.
+    vehicle="fw" #balloon, fw, uuv, mc, etc.
 
     # Useful Globals
     build_dir = os.path.join(px4_dir, "build")
@@ -159,7 +159,7 @@ def main ():
     handlers = {
         r"^param set (?P<param_name>\w+)\s(?P<param_val>\w+).*$": handle_set_param(),
         r"^param set-default (?P<param_name>\w+)\s(?P<param_val>\w+).*$": handle_set_default_param(),
-        r"^(?P<module_name>\w+)\sstart.*$": handle_start_module(),
+        r"^(?P<module_name>\w+)\s([\w-]+\s)*start\w*$": handle_start_module(),
         r"^if (?P<condition>.+)$": handle_if(),
         r"^fi$": handle_fi(),
         r"^else$": handle_else(),
